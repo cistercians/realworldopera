@@ -1,0 +1,60 @@
+<html>
+  <head>
+    <style>
+      body {margin: 0; width: 100vw; height: 100vh; background-color: black;}
+      h1 {color: darkgray; text-align: center;}
+      h2 {color: darkgray; text-align: center;}
+      button {background-color:black; color:darkgray;}
+      #eye {padding-top: 25%;}
+      #home {display: none;}
+      #menu {width: 100%; position: absolute; z-index: 1;}
+      #title {padding-top: 3.3%;}
+    </style>
+    <script src="//unpkg.com/globe.gl"></script>
+    <title>𓂀</title>
+  </head>
+
+  <body>
+    <div id="enterDiv">
+      <div id="eye">
+        <center><h1>𓂀</h1></center>
+        <center><button id="enter">ENTER</button></center>
+      </div>
+    </div>
+    <div id="home">
+      <div id="menu">
+        <h1 id="title"><h1>𓂀<h1><h1>R E A L</h1><h2>W O R L D · O P E R A</h2>
+      </div>
+      <div id="globe"></div>
+    </div>
+    <script>
+      const globe = Globe()
+        .globeImageUrl('//unpkg.com/three-globe/example/img/earth-night.jpg')
+        (document.getElementById('globe'));
+
+      // from https://github.com/telegeography/www.submarinecablemap.com
+      fetch('//raw.githubusercontent.com/telegeography/www.submarinecablemap.com/master/web/public/api/v3/cable/cable-geo.json')
+        .then(r =>r.json())
+        .then(cablesGeo => {
+          let cablePaths = [];
+          cablesGeo.features.forEach(({ geometry }) => {
+            geometry.coordinates.forEach(coords => cablePaths.push({ coords }));
+          });
+
+          globe
+            .pathsData(cablePaths)
+            .pathPoints('coords')
+            .pathPointLat(p => p[1])
+            .pathPointLng(p => p[0])
+            .pathDashLength(0.1)
+            .pathDashGap(0.008)
+            .pathDashAnimateTime(12000)
+            .pointOfView({ lat: 39.6, lng: -98.5, altitude: 3.3 });
+            globe.controls().autoRotate = true;
+            globe.controls().autoRotateSpeed = 1.1;
+        });
+    </script>
+    <script src="/client/js/socket.js"></script>
+    <script src="/client/js/client.js"></script>
+  </body>
+</html>
