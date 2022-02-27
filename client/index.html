@@ -1,5 +1,11 @@
 <html>
   <head>
+    <!-- Mapbox.js -->
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.js'></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.min.js"></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css' rel='stylesheet' />
+    <link href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.css' rel='stylesheet' />
+
     <style>
       body {margin: 0; width: 100vw; height: 100vh; background-color: black;}
       h1 {color: darkgray; text-align: center;}
@@ -10,12 +16,15 @@
       #home {display: none;}
       #menu {width: 100%; position: absolute; z-index: 1;}
       #title {padding-top: 3.3%;}
-      #cli {font-family: 'Fira Mono'; width: 100%; height: 50vh; position: absolute; bottom: 0; z-index: 1;}
+      #map {display: none; top: 0; bottom: 0; width: 100%; position: absolute;}
+      #cli {font-family: 'Fira Mono'; width: 100%; height: 25vh; position: absolute; bottom: 0; z-index: 1;}
       #in {position: absolute; bottom: 0;}
       #text {color: #FFE87C; background-color: transparent; width: 100%; border: 0; outline: 0;}
       .line {color: #FFE87C; background-color: black; opacity: 60%; margin: 0; padding: 0; display: flex; flex-direction: row; width: 100%;}
-      .info {color: darkgray;}
+      .info {color: white;}
       .name {max-width:80px; min-width:80px; text-align: right;}
+      .mapboxgl-ctrl-bottom-left {display: none;}
+      .mapboxgl-ctrl-bottom-right {display: none;}
     </style>
     <script src="//unpkg.com/globe.gl"></script>
     <title>𓂀</title>
@@ -40,10 +49,12 @@
           <input id="text"></input>
         </div>
       </div>
+      <div id="map"></div>
       <div id="globe"></div>
     </div>
     <script src="/client/js/globe.js"></script>
     <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/geolocator/2.1.5/geolocator.js"></script>
     <script src="/client/js/client.js"></script>
     <script src="/client/js/gematria.js"></script>
   </body>

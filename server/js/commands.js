@@ -10,11 +10,12 @@ EvalCmd = function(data){
       isValidPass({name:cred[0], pass:cred[1]},function(res){
         if(res){
           socket.emit('login', cred[0]);
-          socket.emit('chat', {msg:'you are logged in as ' + cred[0]})
+        } else {
+          socket.emit('chat',{msg:'invalid credentials'});
         }
       })
     } else {
-      socket.emit('chat',{msg:'invalid credentials'});
+      socket.emit('chat', {msg:'invalid credentials'});
     }
   } else if(data.cmd == 'signup'){
     socket.emit('chat', {msg:'/signup username password'});
@@ -36,7 +37,7 @@ EvalCmd = function(data){
         socket.emit('chat', {msg: 'name can only contain characters a-z'});
       }
     } else {
-      socket.emit('chat',{msg:'invalid credentials'});
+      socket.emit('chat', {msg:'invalid credentials'});
     }
   }
 }
