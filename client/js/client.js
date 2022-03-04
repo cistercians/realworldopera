@@ -12,7 +12,7 @@ var time = document.getElementById('time');
 var text = document.getElementById('text');
 
 var audio = new Audio();
-audio.src = '/client/Tosca.mp3';
+audio.src = '/client/to-the-night.mp3';
 audio.loop = true;
 
 enterButton.onclick = function(){
@@ -68,19 +68,26 @@ socket.on('login',function(data){
     menu.style.display = 'none';
     globebox.style.display = 'none';
     mapbox.style.display = 'block';
+    audio.pause();
     buildMap();
   } else {
-    stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>client:&nbsp;</p><p> provide location to login</p></div>"
+    stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>client:&nbsp;</p><p> provide /location to login</p></div>";
     getLoc();
   }
 });
 
+socket.on('notif', function(data){
+  stream.innerHTML += "<div class='line notif'><p>" + getTime() + "</p><b><p class='name'>client:&nbsp;</p><p> " + data.msg + "</p></b></div>";
+  stream.scrollTop = stream.scrollHeight;
+});
+
 socket.on('chat', function(data){
   if(data.name){
-    stream.innerHTML += "<div class='line'><p>" + getTime() + "</p><p class='name'>" + checkName(data.name) + ":&nbsp;</p><p>" + data.msg + "</p></div>"
+    stream.innerHTML += "<div class='line'><p>" + getTime() + "</p><p class='name'>" + checkName(data.name) + ":&nbsp;</p><p>" + data.msg + "</p></div>";
   } else {
-    stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>client:&nbsp;</p><p> " + data.msg + "</p></div>"
+    stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>client:&nbsp;</p><p> " + data.msg + "</p></div>";
   }
+  stream.scrollTop = stream.scrollHeight;
 });
 
 setInterval(function(){
@@ -103,7 +110,9 @@ var getLoc = function(){
   geolocator.locate(options, function (err, location) {
       if (err) return console.log(err);
       console.log(location);
-      client.loc = [location.coords.longitude, location.coords.latitude];
+      socket.emit('loc', location);
+      client.loc = location;
+      stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>client:&nbsp;</p><p> located in " + location.address.city.toLowerCase() + ", " + location.address.region.toLowerCase() + "</p></div>";
   });
 }
 
@@ -118,7 +127,7 @@ map = null;
 var buildMap = function(){
   map = new mapboxgl.Map({
     style: 'mapbox://styles/mapbox/satellite-streets-v11',
-    center: client.loc,
+    center: [client.loc.coords.longitude,client.loc.coords.latitude],
     zoom: 18,
     pitch: 45,
     bearing: 0,
@@ -220,15 +229,6 @@ var buildMap = function(){
     })
   })
   rotateCamera(0);
-};
-
-// Points of interest
-var poi = {
-  'type':'geojson',
-  'data':{
-    'type':'FeatureCollection',
-    'features':[]
-  }
 };
 
 var animate = true;
