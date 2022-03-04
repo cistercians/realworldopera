@@ -61,30 +61,3 @@ io.sockets.on('connection', function(socket){
 http.listen(2000, function() {
   console.log("Server is listening on port 2000");
 });
-
-setTimeout(function(){
-  var loc = SOCKET_LIST[randomUser()].loc.coords;
-  for(i = 0; i < 100; i++){
-    var id = Math.random();
-    var shift = 1;
-    if(Math.random() < 0.5){
-      shift = -1;
-    }
-    var lat = loc.latitude + (Math.random() * 0.1 * shift);
-    if(Math.random() < 0.5){
-      shift = -1;
-    } else {
-      shift = 1;
-    }
-    var lng = loc.longitude + (Math.random() * 0.1 * shift);
-    SOCKET_LIST[id] = {
-      id:id,
-      name:'test',
-      loc:{
-        coords:{latitude:lat,longitude:lng}
-      }
-    }
-  }
-  buildClusters();
-  newObjective();
-},15000);
