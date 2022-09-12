@@ -1,0 +1,69 @@
+<html>
+  <head>
+    <script src='/client/js/mobile-detect.js'></script>
+    <!-- Mapbox.js -->
+    <script src='https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.js'></script>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.min.js"></script>
+    <link href='https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css' rel='stylesheet' />
+    <link href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.css' rel='stylesheet' />
+    <link href='https://fonts.googleapis.com/css?family=Fira Mono' rel='stylesheet'>
+
+    <style>
+      body {font-family: 'Fira Mono'; margin: 0; width: 100vw; height: 100vh; background-color: black;}
+      h1 {color: darkgray; text-align: center;}
+      h2 {color: darkgray; text-align: center;}
+      p {display: inline-block; margin: 0; padding: 0;}
+      img {max-width: 50%;}
+      button {background-color: black; color: darkgray;}
+      #eye {padding-top: 25%;}
+      #home {display: none;}
+      #menu {width: 100vw; position: absolute; z-index: 1;}
+      #title {padding-top: 3.3%;}
+      #map {display: none; top: 0; bottom: 0; width: 100vw; height: 100vh; position: absolute;}
+      #cli {width: 100vw; position: absolute; bottom: 0; z-index: 1;}
+      #stream {height: 25vh; background-color: black; opacity: 60%; width: 100vw; position: absolute; bottom: 18px; overflow-y: scroll; overflow-x: hidden;}
+      #in {background-color: black; opacity: 60%; position: absolute; bottom: 0;}
+      #text {font-family: 'Fira Mono'; color: white; background-color: transparent; width: 100vw; border: 0; outline: 0;}
+      .line {color: white; margin: 0; padding: 0; display: flex; flex-direction: row; width: 100vw;}
+      .info {color: khaki;}
+      .notif {color: white;}
+      .highlight {background-color: crimson};
+      .name {text-align: right;}
+      .cursor {max-width:80px; min-width:80px; text-align: right;}
+      .mapboxgl-ctrl-bottom-left {display: none;}
+      .mapboxgl-ctrl-bottom-right {display: none;}
+      ::-webkit-scrollbar {display: none;} /* Hide scrollbar for Chrome, Safari and Opera */
+    </style>
+    <script src="//unpkg.com/globe.gl"></script>
+    <title>𓂀</title>
+  </head>
+
+  <body>
+    <div id="enterDiv">
+      <div id="eye">
+        <center><h1>𓂀</h1></center>
+        <center><button id="enter">ENTER</button></center>
+      </div>
+    </div>
+    <div id="home">
+      <div id="menu">
+        <h1 id="title"><h1>𓂀<h1><h1>R E A L</h1><h2>W O R L D · O P E R A</h2>
+      </div>
+      <div id="cli">
+        <div id="stream"></div>
+        <div id="in" class="line">
+          <p id="time"></p>
+          <p class="cursor">></p>
+          <input id="text"></input>
+        </div>
+      </div>
+      <div id="map"></div>
+      <div id="globe"></div>
+    </div>
+    <script src="/client/js/globe.js"></script>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/geolocator/2.1.5/geolocator.js"></script>
+    <script src="/client/js/client.js"></script>
+    <script src="/client/js/gematria.js"></script>
+  </body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "realworldopera",
+  "engines": {
+    "node": "17.6.0"
+  },
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node opera.js"
+  },
+  "author": "Johan de La Baran",
+  "license": "ISC",
+  "dependencies": {
+    "@derhuerst/query-overpass": "^2.0.0",
+    "express": "^4.17.2",
+    "get-distance-between-points": "^1.2.0",
+    "horseman-article-parser": "^0.9.0",
+    "mongodb": "^4.4.1",
+    "serp": "^2.2.1",
+    "socket.io": "^4.4.1"
+  }
+}
