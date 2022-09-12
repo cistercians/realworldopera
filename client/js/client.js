@@ -114,7 +114,7 @@ socket.on('chat', function(data){
 socket.on('locate',function(){
   if(!client.loc){
     stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> requesting location...</p></div>";
-    stream.innerHTML += "<div class='line notif'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> location services disabled on chrome browsers</p></div>";
+    stream.innerHTML += "<div class='line notif'><span class='highlight'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> location services disabled on chrome browsers</p></span></div>";
     stream.scrollTop = stream.scrollHeight;
   }
   getLoc();
