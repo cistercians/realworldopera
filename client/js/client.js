@@ -139,7 +139,6 @@ var getLoc = function(){
   }
   geolocator.locate(options, function (err, location) {
     if(err){
-      client.loc = {coords:{longitude:12.4663,latitude:41.9031}};
       return console.log(err);
     }
     console.log(location);
@@ -169,6 +168,10 @@ mapboxgl.accessToken = 'pk.eyJ1IjoiY2lzdGVyY2lhbmNhcGl0YWwiLCJhIjoiY2s5N2RsczhmM
 map = null;
 
 var buildMap = function(){
+  var start = {}
+  if(!client.loc){
+    client.loc = {coords:{longitude:12.4663,latitude:41.9031}};
+  }
   if(client.mobile){
     map = new mapboxgl.Map({
       style: 'mapbox://styles/mapbox/dark-v10',
