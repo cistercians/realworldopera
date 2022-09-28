@@ -138,22 +138,25 @@ var getLoc = function(){
       staticMap: false         // get a static map image URL (boolean or options object)
   }
   geolocator.locate(options, function (err, location) {
-      if (err) return console.log(err);
-      console.log(location);
-      socket.emit('loc', location);
-      if(!client.loc){
-        stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> located in " + location.address.city.toLowerCase() + ", " + location.address.region.toLowerCase() + "</p></div>";
-      }
-      client.loc = location;
-      if(client.mobile){
-        client.watcher = geolocator.watch({},function(err, loc){
-          if(err) return console.log(err);
-          socket.emit('loc', loc);
-          client.loc = loc;
-          var pt = [loc.coords.longitude,loc.coords.latitude];
-          fly(pt);
-        })
-      }
+    if(err){
+      client.loc = {coords:{longitude:12.4663,latitude:41.9031}};
+      return console.log(err);
+    }
+    console.log(location);
+    socket.emit('loc', location);
+    if(!client.loc){
+      stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> located in " + location.address.city.toLowerCase() + ", " + location.address.region.toLowerCase() + "</p></div>";
+    }
+    client.loc = location;
+    if(client.mobile){
+      client.watcher = geolocator.watch({},function(err, loc){
+        if(err) return console.log(err);
+        socket.emit('loc', loc);
+        client.loc = loc;
+        var pt = [loc.coords.longitude,loc.coords.latitude];
+        fly(pt);
+      })
+    }
   })
 };
 
