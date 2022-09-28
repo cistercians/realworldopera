@@ -46,6 +46,9 @@ io.sockets.on('connection', function(socket){
     if(data.msg[0] == '/'){
       var cmd = data.msg.split('/');
       EvalCmd({id:socket.id, cmd:cmd[1]});
+    } else if(data.msg[0] == '#'){
+      var key = data.msg.split('#');
+      EvalKey({id:socket.id, key:key[1]});
     } else {
       if(data.name){
         io.emit('chat', data);

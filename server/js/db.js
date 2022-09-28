@@ -31,6 +31,21 @@ isNameTaken = async function(data,cb){
 };
 
 addUser = async function(data){
-  await db.collection('accounts').insertOne({name:data.name, pass:data.pass}).then(function(err){
+  await db.collection('accounts').insertOne({name:data.name,pass:data.pass}).then(function(err){
   }).catch(console.error);
+};
+
+keyLookup = async function(data,cb){
+  await db.collection('keys').find(data.key).toArray(function(err,res){
+    if(err){
+      throw err;
+    }
+    if(res.length > 0){
+      cb(true);
+    } else {
+      await db.collection('keys').insertOne({key:data.key,admin:data.name}).then(function(err){
+      }).catch(console.error);
+      cb(false);
+    }
+  })
 };

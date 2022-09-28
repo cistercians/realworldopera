@@ -4,31 +4,30 @@ EvalCmd = function(data){
   if(data.cmd == 'login'){
     socket.emit('chat', {msg:'/login username password'});
   } else if(data.cmd.slice(0,5) == 'login' && data.cmd[5] == ' '){
-    if(socket.loc){
-      var c = data.cmd.slice(data.cmd.indexOf(' ') + 1);
-      var cred = c.split(' ');
-      if(cred.length == 2){
-        isValidPass({name:cred[0], pass:cred[1]},function(res){
-          if(res){
-            if(USERS[cred[0]]){
-              socket.emit('chat',{msg: 'user is already logged in'});
-            } else {
-              USERS[cred[0]] = data.id;
-              SOCKET_LIST[data.id].name = cred[0];
-              socket.emit('login', cred[0]);
-              socket.emit('chat',{msg: 'you are logged in as ' + cred[0]});
-              console.log('User logged in: ' + cred[0]);
-            }
+    var c = data.cmd.slice(data.cmd.indexOf(' ') + 1);
+    var cred = c.split(' ');
+    if(cred.length == 2){
+      isValidPass({name:cred[0], pass:cred[1]},function(res){
+        if(res){
+          if(USERS[cred[0]]){
+            socket.emit('chat',{msg: 'user is already logged in'});
           } else {
-            socket.emit('chat',{msg:'invalid credentials'});
+            if(!socket.loc){
+              socket.emit('chat', {msg: '/location not found'});
+              socket.emit('notif', {msg: 'location services disabled on chrome browsers'});
+            }
+            USERS[cred[0]] = data.id;
+            SOCKET_LIST[data.id].name = cred[0];
+            socket.emit('login', cred[0]);
+            socket.emit('chat',{msg: 'you are logged in as ' + cred[0]});
+            console.log('User logged in: ' + cred[0]);
           }
-        })
-      } else {
-        socket.emit('chat', {msg:'invalid credentials'});
-      }
+        } else {
+          socket.emit('chat',{msg:'invalid credentials'});
+        }
+      })
     } else {
-      socket.emit('chat', {msg: 'provide /location to login'});
-      socket.emit('notif', {msg: 'location services disabled on chrome browsers'});
+      socket.emit('chat', {msg:'invalid credentials'});
     }
   } else if(data.cmd == 'logout'){
     if(socket.name){
