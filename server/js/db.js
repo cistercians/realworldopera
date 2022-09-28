@@ -43,7 +43,7 @@ keyLookup = async function(data,cb){
     if(res.length > 0){
       cb(true);
     } else {
-      await db.collection('keys').insertOne({key:data.key,admin:data.name}).then(function(err){
+      db.collection('keys').insertOne({key:data.key,admin:data.name}).then(function(err){
       }).catch(console.error);
       cb(false);
     }
