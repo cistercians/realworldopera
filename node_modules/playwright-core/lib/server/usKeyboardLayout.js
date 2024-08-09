@@ -4,7 +4,6 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.keypadLocation = exports.USKeyboardLayout = void 0;
-
 /**
  * Copyright 2017 Google Inc. All rights reserved.
  * Modifications copyright (c) Microsoft Corporation.
@@ -21,9 +20,9 @@ exports.keypadLocation = exports.USKeyboardLayout = void 0;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const keypadLocation = 3;
-exports.keypadLocation = keypadLocation;
-const USKeyboardLayout = {
+
+const keypadLocation = exports.keypadLocation = 3;
+const USKeyboardLayout = exports.USKeyboardLayout = {
   // Functions row
   'Escape': {
     'keyCode': 27,
@@ -554,4 +553,3 @@ const USKeyboardLayout = {
     'location': 3
   }
 };
-exports.USKeyboardLayout = USKeyboardLayout;

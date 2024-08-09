@@ -4,7 +4,6 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.Events = void 0;
-
 /**
  * Copyright 2019 Google Inc. All rights reserved.
  * Modifications copyright (c) Microsoft Corporation.
@@ -21,7 +20,8 @@ exports.Events = void 0;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-const Events = {
+
+const Events = exports.Events = {
   AndroidDevice: {
     WebView: 'webview',
     Close: 'close'
@@ -37,8 +37,13 @@ const Events = {
     Disconnected: 'disconnected'
   },
   BrowserContext: {
+    Console: 'console',
     Close: 'close',
+    Dialog: 'dialog',
     Page: 'page',
+    // Can't use just 'error' due to node.js special treatment of error events.
+    // @see https://nodejs.org/api/events.html#events_error_events
+    WebError: 'weberror',
     BackgroundPage: 'backgroundpage',
     ServiceWorker: 'serviceworker',
     Request: 'request',
@@ -83,7 +88,7 @@ const Events = {
   },
   ElectronApplication: {
     Close: 'close',
+    Console: 'console',
     Window: 'window'
   }
 };
-exports.Events = Events;

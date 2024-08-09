@@ -8,10 +8,10 @@ var io = require('socket.io')(http,{
   pingTimeout:300000,
   upgradeTimeout:150000
 });
-require('./server/js/db');
 require('./server/js/commands');
 require('./server/js/gematria');
 require('./server/js/utils');
+require('./server/js/projects');
 
 app.get('/',function(req, res) {
   res.sendFile(__dirname + '/client/index.html');
@@ -27,7 +27,7 @@ io.sockets.on('connection', function(socket){
   console.log('Socket connected: ' + socket.id);
   socket.emit('chat', {msg:'welcome to the real world opera'});
   socket.emit('chat', {msg:'alpha launched 3/3/2022'});
-  socket.emit('chat', {msg:'/login or /signup'});
+  socket.emit('chat', {msg:'/login to start'});
 
   socket.on('disconnect', function(reason){
     if(socket.name){
@@ -49,11 +49,25 @@ io.sockets.on('connection', function(socket){
     } else if(data.msg[0] == '#'){
       var key = data.msg.split('#');
       EvalKey({id:socket.id, key:key[1]});
+    } else if(data.msg[0] == '+'){
+      if(socket.key){
+        var item = data.msg.split('+');
+        EvalAdd({id:socket.id, item:item[1]});
+      } else {
+        socket.emit('notif',{msg:'no #project open'});
+      }
+    } else if(data.msg[0] == '!'){
+      if(socket.key){
+        var item = data.msg.split('!');
+        EvalItem({id:socket.id, item:item[1]});
+      } else {
+        socket.emit('notif',{msg:'no #project open'});
+      }
     } else {
       if(data.name){
         io.emit('chat', data);
       } else {
-        socket.emit('chat', {msg:'/login or /signup to chat'});
+        socket.emit('chat', {msg:'/login to chat'});
       }
     }
   })

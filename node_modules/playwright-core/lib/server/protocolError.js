@@ -4,8 +4,9 @@ Object.defineProperty(exports, "__esModule", {
   value: true
 });
 exports.ProtocolError = void 0;
+exports.isProtocolError = isProtocolError;
 exports.isSessionClosedError = isSessionClosedError;
-
+var _stackTrace = require("../utils/stackTrace");
 /**
  * Copyright (c) Microsoft Corporation.
  *
@@ -21,17 +22,28 @@ exports.isSessionClosedError = isSessionClosedError;
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 class ProtocolError extends Error {
-  constructor(sessionClosed, message) {
-    super(message);
-    this.sessionClosed = void 0;
-    this.sessionClosed = sessionClosed || false;
+  constructor(type, method, logs) {
+    super();
+    this.type = void 0;
+    this.method = void 0;
+    this.logs = void 0;
+    this.type = type;
+    this.method = method;
+    this.logs = logs;
   }
-
+  setMessage(message) {
+    (0, _stackTrace.rewriteErrorMessage)(this, `Protocol error (${this.method}): ${message}`);
+  }
+  browserLogMessage() {
+    return this.logs ? '\nBrowser logs:\n' + this.logs : '';
+  }
 }
-
 exports.ProtocolError = ProtocolError;
-
+function isProtocolError(e) {
+  return e instanceof ProtocolError;
+}
 function isSessionClosedError(e) {
-  return e instanceof ProtocolError && e.sessionClosed;
+  return e instanceof ProtocolError && (e.type === 'closed' || e.type === 'crashed');
 }

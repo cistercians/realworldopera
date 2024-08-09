@@ -36,6 +36,21 @@ enterButton.onclick = function(){
   text.focus();
 };
 
+var post_chat = function(name,msg){
+  stream.innerHTML += "<div class='line'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + msg +"</p></div>";
+  stream.scrollTop = stream.scrollHeight;
+}
+
+var post_info = function(msg){
+  stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + msg +"</p></div>";
+  stream.scrollTop = stream.scrollHeight;
+}
+
+var post_notif = function(msg){
+  stream.innerHTML += "<div class='line notif'><span class='highlight'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + msg +"</p></span></div>";
+  stream.scrollTop = stream.scrollHeight;
+}
+
 var getTime = function(){
   var d = new Date();
   var hours = d.getHours();
@@ -84,7 +99,17 @@ socket.on('login',function(data){
   globebox.style.display = 'none';
   mapbox.style.display = 'block';
   audio.pause();
-  buildMap();
+  build_map();
+});
+
+socket.on('project',function(data){
+  if(map.getSource('points')){
+    client.project = data.project;
+    build_geo();
+    center_view();
+  } else {
+    post_notif('map still loading...');
+  }
 });
 
 socket.on('logout',function(){
@@ -98,8 +123,7 @@ socket.on('logout',function(){
 });
 
 socket.on('notif', function(data){
-  stream.innerHTML += "<div class='line notif'><span class='highlight'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + data.msg + "</p></span></div>";
-  stream.scrollTop = stream.scrollHeight;
+  post_notif(data.msg);
 });
 
 socket.on('chat', function(data){
@@ -119,6 +143,23 @@ socket.on('locate',function(){
   }
   getLoc();
 });
+
+socket.on('orbit',function(){
+  if(orbit){
+    orbit = false;
+  } else {
+    orbit = true;
+  }
+});
+
+socket.on('center',function(){
+  if(client.project){
+    center_view();
+  } else {
+    stream.innerHTML += "<div class='line notif'><span class='highlight'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> no #project open</p></span></div>";
+    stream.scrollTop = stream.scrollHeight;
+  }
+})
 
 setInterval(function(){
   time.innerHTML = getTime();
@@ -145,6 +186,7 @@ var getLoc = function(){
     socket.emit('loc', location);
     if(!client.loc){
       stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> located in " + location.address.city.toLowerCase() + ", " + location.address.region.toLowerCase() + "</p></div>";
+      stream.scrollTop = stream.scrollHeight;
     }
     client.loc = location;
     if(client.mobile){
@@ -167,7 +209,7 @@ window.onload = function(){
 mapboxgl.accessToken = 'pk.eyJ1IjoiY2lzdGVyY2lhbmNhcGl0YWwiLCJhIjoiY2s5N2RsczhmMGU1dzNmdGEzdzU2YTZhbiJ9.-xDMU_9FYbMXJf3UD4ocCw';
 map = null;
 
-var buildMap = function(){
+var build_map = function(){
   var start = {}
   if(!client.loc){
     client.loc = {coords:{longitude:12.4663,latitude:41.9031}};
@@ -176,7 +218,7 @@ var buildMap = function(){
     map = new mapboxgl.Map({
       style: 'mapbox://styles/mapbox/dark-v10',
       center: [client.loc.coords.longitude,client.loc.coords.latitude],
-      zoom: 18,
+      zoom: 17,
       bearing: 0,
       container: 'map'
     });
@@ -184,8 +226,8 @@ var buildMap = function(){
     map = new mapboxgl.Map({
       style: 'mapbox://styles/mapbox/satellite-streets-v11',
       center: [client.loc.coords.longitude,client.loc.coords.latitude],
-      zoom: 18,
-      pitch: 45,
+      zoom: 17,
+      pitch: 60,
       bearing: 0,
       container: 'map',
       antialias: true
@@ -261,6 +303,78 @@ var buildMap = function(){
         }
       },labelLayerId);
 
+      map.addSource('points',{
+        'type':'geojson',
+        'data':{
+          'type':'FeatureCollection',
+          'features':[]
+        }
+      });
+      map.addSource('areas',{
+        'type':'geojson',
+        'data':{
+          'type':'FeatureCollection',
+          'features':[]
+        }
+      });
+
+      map.addLayer({
+          'id': 'points',
+          'type': 'circle',
+          'source': 'points',
+          'paint': {
+              'circle-color': '#4264fb',
+              'circle-radius': 8,
+              'circle-stroke-width': 2,
+              'circle-stroke-color': '#ffffff'
+          }
+      });
+      map.addLayer({
+          'id': 'areas',
+          'type': 'fill',
+          'source': 'areas',
+          'paint': {
+              'fill-color': '#0080ff',
+              'fill-opacity': 0.2
+          }
+      });
+
+      const popup = new mapboxgl.Popup({
+          closeButton: false,
+          closeOnClick: false
+      });
+
+      const draw = new MapboxDraw({
+        displayControlsDefault: false,
+        // Select which mapbox-gl-draw control buttons to add to the map.
+        controls: {
+            polygon: true,
+            trash: true
+        },
+        // Set mapbox-gl-draw to draw by default.
+        // The user does not have to click the polygon control button first.
+        //defaultMode: 'draw_polygon'
+      });
+      map.addControl(draw);
+
+      map.on('mouseenter', 'points', (e) => {
+          // Change the cursor style as a UI indicator.
+          map.getCanvas().style.cursor = 'pointer';
+
+          // Copy coordinates array.
+          const coordinates = e.features[0].geometry.coordinates.slice();
+          const description = e.features[0].properties.description;
+
+          // Populate the popup and set its coordinates
+          // based on the feature found.
+          popup.setLngLat(coordinates).setHTML(description).addTo(map);
+      });
+
+      map.on('mouseleave', 'points', () => {
+          map.getCanvas().style.cursor = '';
+          popup.remove();
+      });
+
       map.addControl(
         new MapboxGeocoder({
           accessToken: mapboxgl.accessToken,
@@ -289,9 +403,10 @@ var buildMap = function(){
 };
 
 var animate = true;
+var orbit = true;
 
 var rotateCamera = function(timestamp) {
-  if(animate && !client.mobile){
+  if(animate && orbit && !client.mobile){
     // clamp the rotation between 0 -360 degrees
     // Divide timestamp by 100 to slow rotation to ~10 degrees / sec
     map.rotateTo((timestamp / 500) % 360, { duration: 0 });
@@ -300,9 +415,131 @@ var rotateCamera = function(timestamp) {
   }
 };
 
-var points_of_interest = [];
-var toGeo = function(points){
-  return "{ 'type': 'FeatureCollection','features': " + points + "}"
+var build_geo = function(){
+  var points = [];
+  var areas  = [];
+  if(client.project){
+    for(var i in client.project.loc){
+      var loc = client.project.data[client.project.loc[i]];
+      if(loc.coords){
+        var feature = {
+          'type':'Feature',
+          'properties':{
+            'description':'<strong>'+loc.name+'</strong>'
+          },
+          'geometry':{
+            'type':'Point',
+            'coordinates':[loc.coords.longitude,loc.coords.latitude]
+          }
+        }
+        if(loc.description){
+          feature['properties']['description'] += '<p>' + loc.description + '</p>'
+        }
+        points.push(feature);
+      } else if(loc.bbox){
+        var feature = {
+          'type':'Feature',
+          'properties':{
+            'description':'<strong>'+loc.name+'</strong>'
+          },
+          'geometry':{
+            'type':'Polygon',
+            'coordinates':[loc.bbox]
+          }
+        }
+        if(loc.description){
+          feature['properties']['description'] += '<p>' + loc.description + '</p>'
+        }
+        areas.push(feature);
+      }
+    }
+  }
+  var data_points = {
+      'type':'FeatureCollection',
+      'features':points
+  }
+  var data_areas = {
+    'type':'FeatureCollection',
+    'features':areas
+  }
+  map.getSource('points').setData(data_points);
+  map.getSource('areas').setData(data_areas);
+};
+
+var center_view = function(){
+  if(client.project){
+    var count = 0;
+    var total_lat = 0;
+    var total_lng = 0;
+    var n = null;
+    var s = null;
+    var e = null;
+    var w = null;
+    var longs = [];
+    var lats = [];
+    for(var i in client.project.loc){
+      var loc = client.project.data[client.project.loc[i]];
+      if(loc.bbox){
+        for(var x in loc.bbox){
+          count++;
+          longs.push(loc.bbox[x][0]);
+          total_lng += loc.bbox[x][0]
+          lats.push(loc.bbox[x][1]);
+          total_lat += loc.bbox[x][1];
+        }
+      } else {
+        count++;
+        longs.push(loc.coords.longitude);
+        total_lng += loc.coords.longitude;
+        lats.push(loc.coords.latitude);
+        total_lat += loc.coords.latitude;
+      }
+    }
+    for(var x in longs){
+      if(!e){
+        e = longs[x];
+      } else {
+        if(longs[x] > e){
+          e = longs[x];
+        }
+      }
+      if(!w){
+        w = longs[x];
+      } else {
+        if(longs[x] < w){
+          w = longs[x];
+        }
+      }
+    }
+    for(var y in lats){
+      if(!n){
+        n = lats[y];
+      } else {
+        if(lats[y] > n){
+          n = lats[y];
+        }
+      }
+      if(!s){
+        s = lats[y];
+      } else {
+        if(lats[y] < s){
+          s = lats[y];
+        }
+      }
+    }
+    var avg_lat = total_lat/count;
+    var avg_lng = total_lng/count;
+    var ne = [e,n];
+    var sw = [w,s];
+    n += 0.001;
+    e += 0.001;
+    s -= 0.001;
+    w -= 0.001;
+    var ne = [e,n];
+    var sw = [w,s];
+    fly([avg_lng,avg_lat]);
+    map.fitBounds([sw,ne]);
+  }
 };
 
 var fly = function(loc){
@@ -325,7 +562,8 @@ setInterval(function(){
     }
   } else {
     if(msgCount > 3){
-      stream.innerHTML += "<div class='line notif'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> slow down! </p></div>";
+      stream.innerHTML += "<div class='line notif'><span class='highlight'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> slow down! </p></span></div>";
+      stream.scrollTop = stream.scrollHeight;
       slowdown = true;
       slowCount = 3 * warn;
       warn++;

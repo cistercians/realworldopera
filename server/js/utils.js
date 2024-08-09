@@ -1,3 +1,9 @@
+const NodeGeocoder = require('node-geocoder');
+const options = {
+  provider: 'mapbox',
+  apiKey: 'pk.eyJ1IjoiY2lzdGVyY2lhbmNhcGl0YWwiLCJhIjoiY2s5N2RsczhmMGU1dzNmdGEzdzU2YTZhbiJ9.-xDMU_9FYbMXJf3UD4ocCw'
+};
+const geocoder = NodeGeocoder(options);
 query = require('@derhuerst/query-overpass');
 const serp = require("serp");
 var dist = require('get-distance-between-points');
@@ -21,7 +27,7 @@ Point = function(coords,id){
   return self;
 };
 
-search = async function(phrase){
+web_search = async function(phrase){
   var out = [];
   const links = await serp.search({qs:{q:phrase,filters:0,pws:0}});
   if(links){
@@ -73,8 +79,22 @@ var randomVal = function(min,max){
   return Math.random() * (max - min) + min;
 };
 
-hasAddress = async function(coords){
-  var res = await geocoder.reverse(coords);
-  console.log(res);
-  return res;
+getCoords = async function(addr){
+  var res = await geocoder.geocode(addr);
+  return res[0]
 };
+
+hasAddress = async function(lat,lng){
+  var res = await geocoder.reverse({lat:lat,lon:lng});
+  return res[0]
+};
+
+sp_user = function(user){
+  return '<span class="user">@' + user + '</span>'
+}
+sp_project = function(project){
+  return '<span class="project">#' + project + '</span>'
+}
+sp_item = function(item){
+  return '<span class="item">!' + item + '</span>'
+}

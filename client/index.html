@@ -7,6 +7,8 @@
     <link href='https://api.mapbox.com/mapbox-gl-js/v2.3.1/mapbox-gl.css' rel='stylesheet' />
     <link href='https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.7.0/mapbox-gl-geocoder.css' rel='stylesheet' />
     <link href='https://fonts.googleapis.com/css?family=Fira Mono' rel='stylesheet'>
+    <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.js"></script>
+    <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-draw/v1.4.3/mapbox-gl-draw.css" type="text/css">
 
     <style>
       body {font-family: 'Fira Mono'; margin: 0; width: 100vw; height: 100vh; background-color: black;}
@@ -21,18 +23,23 @@
       #title {padding-top: 3.3%;}
       #map {display: none; top: 0; bottom: 0; width: 100vw; height: 100vh; position: absolute;}
       #cli {width: 100vw; position: absolute; bottom: 0; z-index: 1;}
-      #stream {height: 25vh; background-color: black; opacity: 60%; width: 100vw; position: absolute; bottom: 18px; overflow-y: scroll; overflow-x: hidden;}
-      #in {background-color: black; opacity: 60%; position: absolute; bottom: 0;}
+      #stream {height: 25vh; background-color: black; opacity: 70%; width: 100vw; position: absolute; bottom: 18px; overflow-y: scroll; overflow-x: hidden;}
+      #in {background-color: black; opacity: 70%; position: absolute; bottom: 0;}
       #text {font-family: 'Fira Mono'; color: white; background-color: transparent; width: 100vw; border: 0; outline: 0;}
       .line {color: white; margin: 0; padding: 0; display: flex; flex-direction: row; width: 100vw;}
       .info {color: khaki;}
       .notif {color: white;}
+      .greyout {color: darkgrey;}
       .highlight {background-color: crimson};
       .name {text-align: right;}
       .cursor {max-width:80px; min-width:80px; text-align: right;}
       .mapboxgl-ctrl-bottom-left {display: none;}
       .mapboxgl-ctrl-bottom-right {display: none;}
+      .mapboxgl-popup {opacity: 60%;}
       ::-webkit-scrollbar {display: none;} /* Hide scrollbar for Chrome, Safari and Opera */
+      .user {color: darkorange; font-weight: bold;}
+      .project {color: deepskyblue; font-weight: bold;}
+      .item {color: lime; font-weight: bold;}
     </style>
     <script src="//unpkg.com/globe.gl"></script>
     <title>𓂀</title>
