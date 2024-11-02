@@ -9,7 +9,7 @@
   "scripts": {
     "start": "node opera.js"
   },
-  "author": "Johan de La Baran",
+  "author": "Nick West",
   "license": "ISC",
   "dependencies": {
     "@derhuerst/query-overpass": "^2.0.0",
