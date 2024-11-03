@@ -1,5 +1,7 @@
 FROM vm/ubuntu:18.04
 
+RUN sudo apt install libc6=2.31-0ubuntu9.2 libc-bin=2.31-0ubuntu9.2
+
 RUN curl -sL https://deb.nodesource.com/setup_20.x | sudo -E bash -
 RUN sudo apt-get install -y nodejs
 RUN sudo npm install npm@latest -g
