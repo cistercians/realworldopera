@@ -165,13 +165,6 @@ class CRPage {
   async navigateFrame(frame, url, referrer) {
     return this._sessionForFrame(frame)._navigate(frame, url, referrer);
   }
-  async exposeBinding(binding) {
-    await this._forAllFrameSessions(frame => frame._initBinding(binding));
-    await Promise.all(this._page.frames().map(frame => frame.evaluateExpression(binding.source).catch(e => {})));
-  }
-  async removeExposedBindings() {
-    await this._forAllFrameSessions(frame => frame._removeExposedBindings());
-  }
   async updateExtraHTTPHeaders() {
     const headers = network.mergeHeaders([this._browserContext._options.extraHTTPHeaders, this._page.extraHTTPHeaders()]);
     await this._networkManager.setExtraHTTPHeaders(headers);
@@ -221,10 +214,13 @@ class CRPage {
   goForward() {
     return this._go(+1);
   }
-  async addInitScript(source, world = 'main') {
-    await this._forAllFrameSessions(frame => frame._evaluateOnNewDocument(source, world));
+  async requestGC() {
+    await this._mainFrameSession._client.send('HeapProfiler.collectGarbage');
   }
-  async removeInitScripts() {
+  async addInitScript(initScript, world = 'main') {
+    await this._forAllFrameSessions(frame => frame._evaluateOnNewDocument(initScript, world));
+  }
+  async removeNonInternalInitScripts() {
     await this._forAllFrameSessions(frame => frame._removeEvaluatesOnNewDocument());
   }
   async closePage(runBeforeUnload) {
@@ -371,7 +367,6 @@ class FrameSession {
     this._screencastId = null;
     this._screencastClients = new Set();
     this._evaluateOnNewDocumentIdentifiers = [];
-    this._exposedBindingNames = [];
     this._metricsOverride = void 0;
     this._workerSessions = new Map();
     this._client = client;
@@ -437,12 +432,11 @@ class FrameSession {
           grantUniveralAccess: true,
           worldName: UTILITY_WORLD_NAME
         });
-        for (const binding of this._crPage._browserContext._pageBindings.values()) frame.evaluateExpression(binding.source).catch(e => {});
-        for (const source of this._crPage._browserContext.initScripts) frame.evaluateExpression(source).catch(e => {});
+        for (const initScript of this._crPage._page.allInitScripts()) frame.evaluateExpression(initScript.source).catch(e => {});
       }
       const isInitialEmptyPage = this._isMainFrame() && this._page.mainFrame().url() === ':';
       if (isInitialEmptyPage) {
-        // Ignore lifecycle events for the initial empty page. It is never the final page
+        // Ignore lifecycle events, worlds and bindings for the initial empty page. It is never the final page
         // hence we are going to get more lifecycle updates after the actual navigation has
         // started (even if the target url is about:blank).
         lifecycleEventsEnabled.catch(e => {}).then(() => {
@@ -454,7 +448,9 @@ class FrameSession {
       }
     }), this._client.send('Log.enable', {}), lifecycleEventsEnabled = this._client.send('Page.setLifecycleEventsEnabled', {
       enabled: true
-    }), this._client.send('Runtime.enable', {}), this._client.send('Page.addScriptToEvaluateOnNewDocument', {
+    }), this._client.send('Runtime.enable', {}), this._client.send('Runtime.addBinding', {
+      name: _page.PageBinding.kPlaywrightBinding
+    }), this._client.send('Page.addScriptToEvaluateOnNewDocument', {
       source: '',
       worldName: UTILITY_WORLD_NAME
     }), this._crPage._networkManager.addSession(this._client, undefined, this._isMainFrame()), this._client.send('Target.setAutoAttach', {
@@ -470,7 +466,7 @@ class FrameSession {
       if (options.bypassCSP) promises.push(this._client.send('Page.setBypassCSP', {
         enabled: true
       }));
-      if (options.ignoreHTTPSErrors) promises.push(this._client.send('Security.setIgnoreCertificateErrors', {
+      if (options.ignoreHTTPSErrors || options.internalIgnoreHTTPSErrors) promises.push(this._client.send('Security.setIgnoreCertificateErrors', {
         ignore: true
       }));
       if (this._isMainFrame()) promises.push(this._updateViewport());
@@ -487,9 +483,7 @@ class FrameSession {
       promises.push(this._updateGeolocation(true));
       promises.push(this._updateEmulateMedia());
       promises.push(this._updateFileChooserInterception(true));
-      for (const binding of this._crPage._page.allBindings()) promises.push(this._initBinding(binding));
-      for (const source of this._crPage._browserContext.initScripts) promises.push(this._evaluateOnNewDocument(source, 'main'));
-      for (const source of this._crPage._page.initScripts) promises.push(this._evaluateOnNewDocument(source, 'main'));
+      for (const initScript of this._crPage._page.allInitScripts()) promises.push(this._evaluateOnNewDocument(initScript, 'main'));
       if (screencastOptions) promises.push(this._startVideoRecording(screencastOptions));
     }
     promises.push(this._client.send('Runtime.runIfWaitingForDebugger'));
@@ -578,7 +572,7 @@ class FrameSession {
       return;
     }
     if (reason === 'swap') {
-      // This is a local -> remote frame transtion, where
+      // This is a local -> remote frame transition, where
       // Page.frameDetached arrives before Target.attachedToTarget.
       // We should keep the frame in the tree, and it will be used for the new target.
       const frame = this._page._frameManager.frame(frameId);
@@ -706,24 +700,6 @@ class FrameSession {
     const values = event.args.map(arg => context.createHandle(arg));
     this._page._addConsoleMessage(event.type, values, (0, _crProtocolHelper.toConsoleMessageLocation)(event.stackTrace));
   }
-  async _initBinding(binding) {
-    const [, response] = await Promise.all([this._client.send('Runtime.addBinding', {
-      name: binding.name
-    }), this._client.send('Page.addScriptToEvaluateOnNewDocument', {
-      source: binding.source
-    })]);
-    this._exposedBindingNames.push(binding.name);
-    if (!binding.name.startsWith('__pw')) this._evaluateOnNewDocumentIdentifiers.push(response.identifier);
-  }
-  async _removeExposedBindings() {
-    const toRetain = [];
-    const toRemove = [];
-    for (const name of this._exposedBindingNames) (name.startsWith('__pw_') ? toRetain : toRemove).push(name);
-    this._exposedBindingNames = toRetain;
-    await Promise.all(toRemove.map(name => this._client.send('Runtime.removeBinding', {
-      name
-    })));
-  }
   async _onBindingCalled(event) {
     const pageOrError = await this._crPage.pageOrError();
     if (!(pageOrError instanceof Error)) {
@@ -797,7 +773,7 @@ class FrameSession {
     const buffer = Buffer.from(payload.data, 'base64');
     this._page.emit(_page.Page.Events.ScreencastFrame, {
       buffer,
-      timestamp: payload.metadata.timestamp,
+      frameSwapWallTime: payload.metadata.timestamp ? payload.metadata.timestamp * 1000 : undefined,
       width: payload.metadata.deviceWidth,
       height: payload.metadata.deviceHeight
     });
@@ -970,15 +946,15 @@ class FrameSession {
       enabled
     }).catch(() => {}); // target can be closed.
   }
-  async _evaluateOnNewDocument(source, world) {
+  async _evaluateOnNewDocument(initScript, world) {
     const worldName = world === 'utility' ? UTILITY_WORLD_NAME : undefined;
     const {
       identifier
     } = await this._client.send('Page.addScriptToEvaluateOnNewDocument', {
-      source,
+      source: initScript.source,
       worldName
     });
-    this._evaluateOnNewDocumentIdentifiers.push(identifier);
+    if (!initScript.internal) this._evaluateOnNewDocumentIdentifiers.push(identifier);
   }
   async _removeEvaluatesOnNewDocument() {
     const identifiers = this._evaluateOnNewDocumentIdentifiers;
