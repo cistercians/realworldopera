@@ -77,6 +77,7 @@ EvalAdd = async function(input){
         description:null,
         bbox:[[w,n],[e,n],[e,s],[w,s]],
         address:data.formattedAddress,
+        links:[],
         notes:[]
       }
     } else {
@@ -85,6 +86,7 @@ EvalAdd = async function(input){
         description:null,
         coords:{longitude:data.longitude,latitude:data.latitude},
         address:data.formattedAddress,
+        links:[],
         notes:[]
       }
     }
@@ -106,8 +108,9 @@ EvalAdd = async function(input){
     if(data.country){
       loc.country = data.country;
     }
-    PROJECTS[socket.key].data[data.extra.id] = loc;
-    PROJECTS[socket.key].loc.push(data.extra.id);
+    var id = Math.random();
+    PROJECTS[socket.key].data[id] = loc;
+    PROJECTS[socket.key].loc.push(id);
     var entry = {
       date:new Date(),
       loc:socket.loc,
@@ -129,16 +132,44 @@ EvalAdd = async function(input){
 
 EvalItem = function(input){
   var socket = SOCKET_LIST[input.id];
-  for(var i in PROJECTS[socket.key].data){
-    var item = PROJECTS[socket.key].data[i];
-    if(item.name == input.item.toLowerCase()){
-      var out = sp_item(item.name) + ':<br>';
-      if(item.description){
-        out += '<i>' + item.description + '</i><br>';
-      } else {
-        out += '<span class="greyout"><i>!' + item.name + ' +description [description...]</i></span><br>';
+  var project = PROJECTS[socket.key];
+  if(input.item.includes(' +')){
+    var str = input.item.split(' +');
+    var id = '';
+    var item = str[0];
+    var data = str[1].split(' ');
+    for(var i in project.data){
+      if(project.data[i].name == item){
+        id = i;
       }
-      socket.emit('chat',{msg:out});
+    }
+    if(data[0] == 'desc'){
+      var desc = str[1].split('desc ')[1];
+      PROJECTS[socket.key].data[i].description = desc;
+      socket.emit('chat',{msg:'description added to ' + sp_item(item)});
+      socket.emit('project',{project:PROJECTS[socket.key]});
+    }
+  } else {
+    for(var i in project.data){
+      if(project.data[i].name == input.item.toLowerCase()){
+        var item = project.data[i];
+        var out = sp_item(item.name) + ':<br>';
+        if(item.description){
+          out += '<i>' + item.description + '</i><br>';
+        } else {
+          out += '<span class="greyout"><i>!' + item.name + ' +desc [description...]</i></span><br>';
+        }
+        if(project.loc.includes(i)){
+          out += 'address: ' + item.address + '<br>';
+        }
+        if(item.links.length > 0){
+
+        } else {
+
+        }
+        out += '<>------------------------------------<>';
+        socket.emit('chat',{msg:out});
+      }
     }
   }
 }
