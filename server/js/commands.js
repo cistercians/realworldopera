@@ -18,6 +18,7 @@ EvalCmd = function(data){
         SOCKET_LIST[data.id].name = cred[0];
         socket.emit('login', cred[0]);
         socket.emit('chat',{msg: 'you are logged in as ' + sp_user(cred)});
+        socket.emit('chat',{msg: '<span class="greyout">/orbit to toggle rotation</span>'});
         console.log('User logged in: ' + cred);
       }
     }

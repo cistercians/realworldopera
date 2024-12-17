@@ -150,26 +150,38 @@ EvalItem = function(input){
       socket.emit('project',{project:PROJECTS[socket.key]});
     }
   } else {
+    var items = [];
     for(var i in project.data){
-      if(project.data[i].name == input.item.toLowerCase()){
-        var item = project.data[i];
-        var out = sp_item(item.name) + ':<br>';
-        if(item.description){
-          out += '<i>' + item.description + '</i><br>';
-        } else {
-          out += '<span class="greyout"><i>!' + item.name + ' +desc [description...]</i></span><br>';
-        }
-        if(project.loc.includes(i)){
-          out += 'address: ' + item.address + '<br>';
-        }
-        if(item.links.length > 0){
-
-        } else {
-
-        }
-        out += '<>------------------------------------<>';
-        socket.emit('chat',{msg:out});
+      if(project.data[i].name == input.item.toLowerCase() || project.data[i].name.includes(input.item.toLowerCase())){
+        items.push(project.data[i]);
       }
+    }
+    if(items.length == 0){
+      socket.emit('chat',{msg:'<span class="greyout">item not found</span>'});
+    } else if(items.length == 1){
+      var item = items[0];
+      var out = sp_item(item.name) + ':<br>';
+      if(item.description){
+        out += '<i>' + item.description + '</i><br>';
+      } else {
+        out += '<span class="greyout"><i>!' + item.name + ' +desc [description...]</i></span><br>';
+      }
+      if(project.loc.includes(i)){
+        out += 'address: ' + item.address + '<br>';
+      }
+      if(item.links.length > 0){
+
+      } else {
+
+      }
+      out += '<------------------------------------>';
+      socket.emit('chat',{msg:out});
+    } else {
+      var out = 'items found:';
+      for(var i in items){
+        out += '<br>' + sp_item(items[i].name);
+      }
+      socket.emit('chat',{msg:out});
     }
   }
 }

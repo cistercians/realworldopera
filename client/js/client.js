@@ -149,6 +149,7 @@ socket.on('orbit',function(){
     orbit = false;
   } else {
     orbit = true;
+    rotateCamera(0);
   }
 });
 
@@ -433,7 +434,7 @@ var build_geo = function(){
           }
         }
         if(loc.description){
-          feature['properties']['description'] += '<p>' + loc.description + '</p>'
+          feature['properties']['description'] += '<br><p>' + loc.description + '</p>'
         }
         points.push(feature);
       } else if(loc.bbox){
