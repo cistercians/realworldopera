@@ -36,6 +36,87 @@ require('./server/js/commands');
 require('./server/js/gematria');
 require('./server/js/utils');
 require('./server/js/projects');
+require('./server/js/research');
+
+// Initialize research services
+const cycleManager = require('./server/services/research/cycleManager');
+const jobQueue = require('./server/services/queue/jobQueue');
+const scrapeWorker = require('./server/services/research/scrapeWorker');
+const EventEmitter = require('events');
+
+// Create a dedicated event emitter for job queue events
+const jobEventEmitter = new EventEmitter();
+
+// Set Socket.io instance after it's created
+setTimeout(() => {
+  cycleManager.setIO(io);
+  jobQueue.setEventEmitter(jobEventEmitter);
+  // Register scraping worker
+  jobQueue.registerWorker('scrape-approved-finding', scrapeWorker);
+
+  // Listen for job completion events from job queue
+  jobEventEmitter.on('job:completed', (job) => {
+    console.log('[JOB EVENT] job:completed received:', { type: job.type, hasResult: !!job.result });
+    if (job.type === 'scrape-approved-finding' && job.result) {
+      const { projectId, sourceUrl } = job.data;
+      const result = job.result;
+
+      if (result.scraped && result.entitiesAdded > 0) {
+        // Notify all sockets in the project room
+        io.to(`project:${projectId}`).emit('chat', {
+          msg: `found ${result.entitiesAdded} new entities from ${sourceUrl}, use /review to view`,
+        });
+        
+        // Optionally refresh review queue for users with modal open
+        const research = require('./server/js/research');
+        const allReviews = research.MEMORY_REVIEW_QUEUE.filter(
+          (r) => r.projectId === projectId
+        );
+        
+        io.to(`project:${projectId}`).emit('reviewQueue', {
+          projectId: projectId,
+          findings: allReviews.map((review) => ({
+            id: review.id,
+            findingType: review.findingType,
+            type: review.findingType,
+            name: review.extractedData?.name || review.extractedData?.address || 'unknown',
+            sourceUrl: review.sourceUrl || '#',
+            confidence: review.confidence || 0,
+            contextSnippet: review.contextSnippet || '',
+            context: review.contextSnippet || '',
+            status: review.reviewed ? (review.status || 'pending') : 'pending',
+            extractedData: review.extractedData,
+          })),
+        });
+      } else if (result.scraped === false && result.reason !== 'url_not_scrapeable') {
+        // Notify on errors and blocked sites
+        if (result.reason === 'error') {
+          io.to(`project:${projectId}`).emit('chat', {
+            msg: `failed to scrape ${sourceUrl}: ${result.error || 'unknown error'}`,
+          });
+        } else if (result.reason === 'blocked') {
+          io.to(`project:${projectId}`).emit('chat', {
+            msg: `cannot scrape ${sourceUrl}: ${result.error || 'blocked by anti-bot protection (requires authentication)'}`,
+          });
+        } else if (result.reason === 'no_content') {
+          io.to(`project:${projectId}`).emit('chat', {
+            msg: `no content found at ${sourceUrl}`,
+          });
+        }
+      }
+    }
+  });
+
+  // Listen for job failures
+  jobEventEmitter.on('job:failed', (job) => {
+    if (job.type === 'scrape-approved-finding') {
+      const { projectId, sourceUrl } = job.data;
+      io.to(`project:${projectId}`).emit('chat', {
+        msg: `scraping failed for ${sourceUrl}: ${job.error || 'unknown error'}`,
+      });
+    }
+  });
+}, 100);
 
 // Routes
 app.get('/', (req, res) => {
@@ -58,9 +139,16 @@ io.sockets.on('connection', (socket) => {
   SOCKET_LIST[socket.id] = socket;
   logger.info('Socket connected', { socketId: socket.id });
   socket.emit('chat', { msg: 'welcome to the real world opera' });
-  socket.emit('chat', { msg: 'upgraded with supabase + security!' });
-  socket.emit('chat', { msg: '/register username password to create account' });
-  socket.emit('chat', { msg: '/login username password to sign in' });
+  socket.emit('chat', { msg: 'simplified mode - projects stored in memory' });
+  socket.emit('chat', { msg: '/login [username] to start - no password needed' });
+  socket.emit('chat', { msg: '#projectname to create/open project' });
+  socket.emit('chat', { msg: 'add items: +entity [name], +loc [address], +coords [lat,lng]' });
+  
+  // Join project-specific rooms for research updates
+  socket.on('join-project', (projectId) => {
+    socket.join(`project:${projectId}`);
+    logger.info('Socket joined project room', { socketId: socket.id, projectId });
+  });
 
   socket.on('disconnect', (reason) => {
     if (socket.name) {
@@ -73,6 +161,16 @@ io.sockets.on('connection', (socket) => {
 
   socket.on('loc', (data) => {
     SOCKET_LIST[socket.id].loc = data;
+  });
+
+  socket.on('action', async (data) => {
+    logger.info('Action received', { type: data.type, id: data.id, socketId: socket.id });
+    const research = require('./server/js/research');
+    if (data.type === 'approve') {
+      await research.approveFinding(socket, data.id);
+    } else if (data.type === 'reject') {
+      await research.rejectFinding(socket, data.id);
+    }
   });
 
   socket.on('text', (data) => {
@@ -107,21 +205,65 @@ io.sockets.on('connection', (socket) => {
 });
 
 // Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM received, shutting down gracefully');
-  http.close(() => {
-    logger.info('Server closed');
-    process.exit(0);
-  });
-});
+let isShuttingDown = false;
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT received, shutting down gracefully');
-  http.close(() => {
-    logger.info('Server closed');
+async function gracefulShutdown(signal) {
+  if (isShuttingDown) {
+    logger.warn(`${signal} received again, forcing exit`);
+    process.exit(1);
+  }
+  
+  isShuttingDown = true;
+  logger.info(`${signal} received, shutting down gracefully`);
+
+  // Set a timeout to force exit if shutdown takes too long
+  const forceExitTimer = setTimeout(() => {
+    logger.error('Shutdown timeout reached, forcing exit');
+    process.exit(1);
+  }, 10000); // 10 second timeout
+
+  try {
+    // Disconnect all sockets first
+    const sockets = Array.from(io.sockets.sockets.values());
+    sockets.forEach((socket) => {
+      socket.disconnect(true);
+    });
+    logger.info(`Disconnected ${sockets.length} socket connections`);
+
+    // Stop job queue processing
+    jobQueue.clear();
+    logger.info('Job queue cleared');
+
+    // Close Socket.io server
+    await new Promise((resolve) => {
+      io.close(() => {
+        logger.info('Socket.io server closed');
+        resolve();
+      });
+    });
+
+    // Close HTTP server
+    await new Promise((resolve) => {
+      http.close(() => {
+        logger.info('HTTP server closed');
+        resolve();
+      });
+    });
+
+    // Clear the force exit timer
+    clearTimeout(forceExitTimer);
+    
+    logger.info('Shutdown complete');
     process.exit(0);
-  });
-});
+  } catch (error) {
+    logger.error('Error during shutdown', { error: error.message });
+    clearTimeout(forceExitTimer);
+    process.exit(1);
+  }
+}
+
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 // Start server
 http.listen(config.port, () => {

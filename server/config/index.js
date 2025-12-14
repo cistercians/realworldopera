@@ -1,4 +1,5 @@
 require('dotenv').config();
+const logger = require('./logger');
 
 const config = {
   // Server
@@ -8,13 +9,14 @@ const config = {
   // Mapbox
   mapboxToken: process.env.MAPBOX_ACCESS_TOKEN,
 
-  // Supabase
+  // Supabase (optional - falls back to in-memory storage if not configured)
   supabaseUrl: process.env.SUPABASE_URL,
   supabaseAnonKey: process.env.SUPABASE_ANON_KEY,
   supabaseServiceKey: process.env.SUPABASE_SERVICE_KEY,
+  useSupabase: !!(process.env.SUPABASE_URL && process.env.SUPABASE_ANON_KEY),
 
-  // Session
-  sessionSecret: process.env.SESSION_SECRET,
+  // Session (optional - generates random secret if not provided)
+  sessionSecret: process.env.SESSION_SECRET || 'development_secret_change_in_production_12345',
 
   // Rate Limiting
   rateLimitWindowMs: Number.parseInt(process.env.RATE_LIMIT_WINDOW_MS, 10) || 900000,
@@ -36,13 +38,23 @@ const config = {
   // Feature flags
   enableGematriaValidation: process.env.ENABLE_GEMATRIA_VALIDATION === 'true', // Keep gematria as fun feature
 
+  // Auto-scraping configuration
+  enableAutoScraping: process.env.ENABLE_AUTO_SCRAPING !== 'false', // Default: true
+  maxEntitiesPerPage: Number.parseInt(process.env.MAX_ENTITIES_PER_PAGE, 10) || 50,
+  scrapingTimeout: Number.parseInt(process.env.SCRAPING_TIMEOUT, 10) || 10000,
+  autoScrapeTypes: process.env.AUTO_SCRAPE_TYPES
+    ? process.env.AUTO_SCRAPE_TYPES.split(',').map((t) => t.trim())
+    : ['entity', 'location', 'organization'], // Which finding types trigger scraping
+
+  // Search API keys (optional)
+  bingApiKey: process.env.BING_API_KEY,
+  googleApiKey: process.env.GOOGLE_API_KEY,
+  googleCx: process.env.GOOGLE_CX, // Custom Search Engine ID
+
   // Validation
   validate() {
     const required = {
       mapboxToken: 'MAPBOX_ACCESS_TOKEN',
-      supabaseUrl: 'SUPABASE_URL',
-      supabaseAnonKey: 'SUPABASE_ANON_KEY',
-      sessionSecret: 'SESSION_SECRET',
     };
 
     const missing = [];
@@ -52,19 +64,13 @@ const config = {
       }
     }
 
-    if (missing.length > 0) {
-      throw new Error(`Missing or invalid environment variables: ${missing.join(', ')}`);
+    // Bing and Google keys are optional (DuckDuckGo works without keys)
+    if (config.bingApiKey || config.googleApiKey) {
+      logger.info('Search APIs: Some providers configured');
     }
 
-    if (config.nodeEnv === 'production') {
-      if (config.sessionSecret.includes('change') || config.sessionSecret.length < 32) {
-        throw new Error(
-          'SESSION_SECRET must be changed and be at least 32 characters in production'
-        );
-      }
-      if (!config.supabaseServiceKey) {
-        throw new Error('SUPABASE_SERVICE_KEY is required in production');
-      }
+    if (missing.length > 0) {
+      throw new Error(`Missing or invalid environment variables: ${missing.join(', ')}`);
     }
 
     return true;

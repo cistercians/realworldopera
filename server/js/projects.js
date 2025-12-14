@@ -1,8 +1,12 @@
-const { supabase } = require('../config/supabase');
 const logger = require('../config/logger');
 
-// Cache for active projects (reduces DB queries)
-const PROJECT_CACHE = {};
+// In-memory project storage (no Supabase)
+const MEMORY_PROJECTS = {};
+const MEMORY_ITEMS = {};
+
+// Export for other modules
+global.MEMORY_PROJECTS = MEMORY_PROJECTS;
+global.MEMORY_ITEMS = MEMORY_ITEMS;
 
 EvalKey = async (data) => {
   const socket = SOCKET_LIST[data.id];
@@ -14,58 +18,21 @@ EvalKey = async (data) => {
   }
 
   try {
-    // Check if project exists in database
-    const { data: projects, error: fetchError } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('key', key)
-      .single();
-
-    if (fetchError && fetchError.code !== 'PGRST116') {
-      // PGRST116 = no rows
-      logger.error('Project fetch error', { error: fetchError.message, key });
-      socket.emit('notif', { msg: 'error loading project' });
-      return;
-    }
-
-    let project = projects;
+    let project = MEMORY_PROJECTS[key];
 
     if (!project) {
       // Project doesn't exist, create it
-      const { data: newProject, error: createError } = await supabase
-        .from('projects')
-        .insert({
-          key: key,
-          locked: false,
-          user_list: [socket.userId],
-          created_by: socket.userId,
-        })
-        .select()
-        .single();
+      project = {
+        id: `proj-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        key: key,
+        locked: false,
+        user_list: [socket.userId],
+        created_by: socket.userId,
+        created_at: new Date().toISOString(),
+      };
 
-      if (createError) {
-        logger.error('Project creation error', { error: createError.message, key });
-        socket.emit('notif', { msg: 'error creating project' });
-        return;
-      }
-
-      project = newProject;
-
-      // Add log entry
-      await supabase.from('project_logs').insert({
-        project_id: project.id,
-        username: socket.name,
-        action: 'project_created',
-        body: `project created by @${socket.name}`,
-        location: socket.loc
-          ? {
-              latitude: socket.loc.coords?.latitude,
-              longitude: socket.loc.coords?.longitude,
-              city: socket.loc.address?.city,
-              region: socket.loc.address?.region,
-            }
-          : null,
-      });
+      MEMORY_PROJECTS[key] = project;
+      MEMORY_ITEMS[project.id] = [];
 
       socket.emit('chat', { msg: `new project ${sp_project(key)} created` });
       logger.info('Project created', { key, userId: socket.userId });
@@ -81,35 +48,19 @@ EvalKey = async (data) => {
       return;
     }
 
-    // Load project items with geometries as text
-    const { data: items, error: itemsError } = await supabase.rpc('get_project_items', {
-      p_project_id: project.id
-    });
+    // Format project data for client
+    const items = MEMORY_ITEMS[project.id] || [];
+    const formattedProject = formatProjectForClient(project, items);
 
-    if (itemsError) {
-      logger.error('Items fetch error', { error: itemsError.message, projectId: project.id });
-    }
-
-    // Format data for client (backward compatible)
-    const formattedProject = await formatProjectForClient(project, items || []);
-
-    // Store in cache
-    PROJECT_CACHE[key] = project;
-
-    // Store project ID on socket
+    // Store project on socket
     SOCKET_LIST[data.id].key = key;
     SOCKET_LIST[data.id].projectId = project.id;
 
+    // Join project room for notifications
+    socket.join(`project:${project.id}`);
+
     socket.emit('chat', { msg: `opening project ${sp_project(key)}` });
     socket.emit('project', { project: formattedProject });
-
-    // Add log entry for opening
-    await supabase.from('project_logs').insert({
-      project_id: project.id,
-      username: socket.name,
-      action: 'project_opened',
-      body: `project opened by @${socket.name}`,
-    });
 
     logger.info('Project opened', { key, userId: socket.userId });
   } catch (error) {
@@ -119,7 +70,7 @@ EvalKey = async (data) => {
 };
 
 // Format project data for client (backward compatible with old structure)
-async function formatProjectForClient(project, items) {
+function formatProjectForClient(project, items) {
   const data = {};
   const loc = [];
   const ent = [];
@@ -128,35 +79,15 @@ async function formatProjectForClient(project, items) {
   items.forEach((item) => {
     const itemData = {
       name: item.name,
-      description: item.description,
+      description: item.description || '',
       links: item.links || [],
       notes: item.notes || [],
-      ...item.data, // Spread JSONB data
+      ...item.data, // Spread additional data
     };
 
     // Add geospatial data if it's a location
-    if (item.type === 'location') {
-      if (item.coords_text) {
-        // Parse WKT text format: POINT(lng lat)
-        const coordsMatch = item.coords_text.match(/POINT\(([^ ]+) ([^ ]+)\)/);
-        if (coordsMatch) {
-          itemData.coords = {
-            longitude: Number.parseFloat(coordsMatch[1]),
-            latitude: Number.parseFloat(coordsMatch[2]),
-          };
-        }
-      }
-      if (item.bbox_text) {
-        // Parse WKT polygon format: POLYGON((lng lat, lng lat, ...))
-        const bboxMatch = item.bbox_text.match(/POLYGON\(\(([^)]+)\)\)/);
-        if (bboxMatch) {
-          const coords = bboxMatch[1].split(',').map((pair) => {
-            const [lng, lat] = pair.trim().split(' ');
-            return [Number.parseFloat(lng), Number.parseFloat(lat)];
-          });
-          itemData.bbox = coords;
-        }
-      }
+    if (item.coords) {
+      itemData.coords = item.coords;
     }
 
     data[item.id] = itemData;
@@ -174,7 +105,7 @@ async function formatProjectForClient(project, items) {
     loc: loc,
     ent: ent,
     org: org,
-    log: [], // Could load from project_logs if needed
+    log: [], // Simplified - no logs
   };
 }
 
@@ -206,61 +137,35 @@ EvalAdd = async (input) => {
       const name = geocodeData.formattedAddress.split(',')[0].toLowerCase();
 
       // Build item data
-      const itemData = {
-        address: geocodeData.formattedAddress,
-        neighbourhood: geocodeData.neighbourhood,
-        city: geocodeData.city,
-        district: geocodeData.district,
-        zipcode: geocodeData.zipcode,
-        state: geocodeData.state,
-        country: geocodeData.country,
+      const item = {
+        id: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        name: name,
+        type: 'location',
+        description: null,
+        links: [],
+        notes: [],
+        data: {
+          address: geocodeData.formattedAddress,
+          neighbourhood: geocodeData.neighbourhood,
+          city: geocodeData.city,
+          district: geocodeData.district,
+          zipcode: geocodeData.zipcode,
+          state: geocodeData.state,
+          country: geocodeData.country,
+        },
+        coords: {
+          latitude: geocodeData.latitude,
+          longitude: geocodeData.longitude,
+        },
+        added_by: socket.userId,
+        created_at: new Date().toISOString(),
       };
 
-      // Always save coordinates as a point
-      const coordsValue = `POINT(${geocodeData.longitude} ${geocodeData.latitude})`;
-      
-      // Optionally save bbox for areas (e.g. cities, neighborhoods)
-      // Only save bbox if it's significantly large (not just a building)
-      let bboxValue = null;
-      if (geocodeData.extra?.bbox && Array.isArray(geocodeData.extra.bbox)) {
-        const [w, s, e, n] = geocodeData.extra.bbox;
-        const width = Math.abs(e - w);
-        const height = Math.abs(n - s);
-        
-        // Only save bbox if area is > 0.01 degrees (~1km)
-        if (width > 0.01 || height > 0.01) {
-          bboxValue = `POLYGON((${w} ${n}, ${e} ${n}, ${e} ${s}, ${w} ${s}, ${w} ${n}))`;
-        }
+      // Add to memory
+      if (!MEMORY_ITEMS[socket.projectId]) {
+        MEMORY_ITEMS[socket.projectId] = [];
       }
-
-      // Insert into database
-      const { error: insertError } = await supabase
-        .from('items')
-        .insert({
-          project_id: socket.projectId,
-          name: name,
-          type: 'location',
-          coords: coordsValue,
-          bbox: bboxValue,
-          data: itemData,
-          added_by: socket.userId,
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        logger.error('Item insert error', { error: insertError.message });
-        socket.emit('notif', { msg: 'error adding location' });
-        return;
-      }
-
-      // Add log entry
-      await supabase.from('project_logs').insert({
-        project_id: socket.projectId,
-        username: socket.name,
-        action: 'location_added',
-        body: `loc !${name} added by @${socket.name}`,
-      });
+      MEMORY_ITEMS[socket.projectId].push(item);
 
       socket.emit('chat', { msg: `loc ${sp_item(name)} added to ${sp_project(socket.key)}` });
       logger.info('Location added', { name, projectId: socket.projectId, userId: socket.userId });
@@ -293,39 +198,60 @@ EvalAdd = async (input) => {
         };
       }
 
-      const coordsValue = `POINT(${lng} ${lat})`;
+      const item = {
+        id: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        name: name,
+        type: 'location',
+        description: null,
+        links: [],
+        notes: [],
+        data: itemData,
+        coords: {
+          latitude: lat,
+          longitude: lng,
+        },
+        added_by: socket.userId,
+        created_at: new Date().toISOString(),
+      };
 
-      const { error: insertError } = await supabase
-        .from('items')
-        .insert({
-          project_id: socket.projectId,
-          name: name,
-          type: 'location',
-          coords: coordsValue,
-          data: itemData,
-          added_by: socket.userId,
-        })
-        .select()
-        .single();
-
-      if (insertError) {
-        logger.error('Item insert error', { error: insertError.message });
-        socket.emit('notif', { msg: 'error adding location' });
-        return;
+      // Add to memory
+      if (!MEMORY_ITEMS[socket.projectId]) {
+        MEMORY_ITEMS[socket.projectId] = [];
       }
-
-      // Add log entry
-      await supabase.from('project_logs').insert({
-        project_id: socket.projectId,
-        username: socket.name,
-        action: 'location_added',
-        body: `loc !${name} added by @${socket.name}`,
-      });
+      MEMORY_ITEMS[socket.projectId].push(item);
 
       socket.emit('chat', { msg: `loc ${sp_item(name)} added to ${sp_project(socket.key)}` });
       logger.info('Location added by coords', { name, lat, lng, projectId: socket.projectId });
 
       // Reload project
+      await reloadProject(socket);
+    } else if (str[0] === 'entity') {
+      // Add entity
+      const entityName = str.slice(1).join(' ');
+      
+      if (!entityName) {
+        socket.emit('notif', { msg: 'please provide a name' });
+        return;
+      }
+
+      const item = {
+        id: `item-${Date.now()}-${Math.random().toString(36).substring(7)}`,
+        name: entityName.toLowerCase(),
+        type: 'entity',
+        description: null,
+        links: [],
+        notes: [],
+        data: {},
+        added_by: socket.userId,
+        created_at: new Date().toISOString(),
+      };
+
+      if (!MEMORY_ITEMS[socket.projectId]) {
+        MEMORY_ITEMS[socket.projectId] = [];
+      }
+      MEMORY_ITEMS[socket.projectId].push(item);
+
+      socket.emit('chat', { msg: `entity ${sp_item(entityName)} added to ${sp_project(socket.key)}` });
       await reloadProject(socket);
     }
   } catch (error) {
@@ -339,17 +265,11 @@ async function reloadProject(socket) {
   if (!socket.projectId) return;
 
   try {
-    const { data: project } = await supabase
-      .from('projects')
-      .select('*')
-      .eq('id', socket.projectId)
-      .single();
+    const project = Object.values(MEMORY_PROJECTS).find(p => p.id === socket.projectId);
+    if (!project) return;
 
-    const { data: items } = await supabase.rpc('get_project_items', {
-      p_project_id: socket.projectId
-    });
-
-    const formattedProject = await formatProjectForClient(project, items || []);
+    const items = MEMORY_ITEMS[socket.projectId] || [];
+    const formattedProject = formatProjectForClient(project, items);
     socket.emit('project', { project: formattedProject });
   } catch (error) {
     logger.error('Reload project error', { error: error.message });
@@ -365,6 +285,8 @@ EvalItem = async (input) => {
   }
 
   try {
+    const items = MEMORY_ITEMS[socket.projectId] || [];
+
     if (input.item.includes(' +')) {
       // Adding data to an item
       const str = input.item.split(' +');
@@ -372,59 +294,32 @@ EvalItem = async (input) => {
       const command = str[1].split(' ');
 
       // Find item
-      // Get all items and filter by name (since RPC doesn't support eq chaining)
-      const { data: allItems, error: findError } = await supabase.rpc('get_project_items', {
-        p_project_id: socket.projectId
-      });
-      const items = allItems?.filter(i => i.name === itemName);
+      const item = items.find(i => i.name === itemName);
 
-      if (findError || !items || items.length === 0) {
+      if (!item) {
         socket.emit('chat', { msg: '<span class="greyout">item not found</span>' });
         return;
       }
-
-      const item = items[0];
 
       if (command[0] === 'desc') {
         // Add description
         const desc = str[1].split('desc ')[1];
-
-        const { error: updateError } = await supabase
-          .from('items')
-          .update({ description: desc })
-          .eq('id', item.id);
-
-        if (updateError) {
-          logger.error('Item update error', { error: updateError.message });
-          socket.emit('notif', { msg: 'error updating item' });
-          return;
-        }
+        item.description = desc;
 
         socket.emit('chat', { msg: `description added to ${sp_item(itemName)}` });
         await reloadProject(socket);
-    }
-  } else {
+      }
+    } else {
       // Query items
       const searchTerm = input.item.toLowerCase();
-
-      // Get all items and filter by search term
-      const { data: allItems, error: searchError } = await supabase.rpc('get_project_items', {
-        p_project_id: socket.projectId
-      });
-      const items = allItems?.filter(i => 
+      const matches = items.filter(i => 
         i.name === searchTerm || i.name.toLowerCase().includes(searchTerm.toLowerCase())
       );
 
-      if (searchError) {
-        logger.error('Item search error', { error: searchError.message });
-        socket.emit('notif', { msg: 'error searching items' });
-        return;
-      }
-
-      if (!items || items.length === 0) {
+      if (matches.length === 0) {
         socket.emit('chat', { msg: '<span class="greyout">item not found</span>' });
-      } else if (items.length === 1) {
-        const item = items[0];
+      } else if (matches.length === 1) {
+        const item = matches[0];
         let out = `${sp_item(item.name)} [${item.type}]:<br>`;
 
         if (item.description) {
@@ -442,10 +337,6 @@ EvalItem = async (input) => {
           }
         }
 
-        if (item.tags && item.tags.length > 0) {
-          out += `tags: ${item.tags.join(', ')}<br>`;
-        }
-
         if (item.links && item.links.length > 0) {
           out += 'links:<br>';
           item.links.forEach((link) => {
@@ -456,8 +347,8 @@ EvalItem = async (input) => {
         out += '<------------------------------------>';
         socket.emit('chat', { msg: out });
       } else {
-        let out = `items found (${items.length}):`;
-        items.forEach((item) => {
+        let out = `items found (${matches.length}):`;
+        matches.forEach((item) => {
           out += `<br>${sp_item(item.name)} [${item.type}]`;
         });
         socket.emit('chat', { msg: out });
@@ -467,4 +358,8 @@ EvalItem = async (input) => {
     logger.error('EvalItem exception', { error: error.message });
     socket.emit('notif', { msg: 'error with item' });
   }
+};
+
+module.exports = {
+  formatProjectForClient,
 };

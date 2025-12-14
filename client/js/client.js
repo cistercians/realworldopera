@@ -34,21 +34,90 @@ enterButton.onclick = function(){
   enterDiv.style.display = 'none';
   home.style.display = 'inline';
   text.focus();
+  // Show globe on desktop
+  if(!client.mobile){
+    globebox.style.display = 'block';
+  }
 };
 
-var post_chat = function(name,msg){
-  stream.innerHTML += "<div class='line'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + msg +"</p></div>";
-  stream.scrollTop = stream.scrollHeight;
+// Message batching for performance
+var messageQueue = [];
+var isScheduled = false;
+
+function scheduleRender() {
+  if (isScheduled) return;
+  isScheduled = true;
+  requestAnimationFrame(renderMessages);
 }
 
-var post_info = function(msg){
-  stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + msg +"</p></div>";
+function renderMessages() {
+  if (messageQueue.length === 0) {
+    isScheduled = false;
+    return;
+  }
+  
+  const fragment = document.createDocumentFragment();
+  
+  while (messageQueue.length > 0) {
+    const msg = messageQueue.shift();
+    const div = document.createElement('div');
+    div.className = msg.className || 'line';
+    
+    const timeEl = document.createElement('p');
+    timeEl.textContent = msg.time;
+    
+    const nameEl = document.createElement('p');
+    nameEl.className = 'name';
+    nameEl.textContent = ' client: ';
+    
+    const contentEl = document.createElement('p');
+    if (msg.className === 'notif' && msg.isHighlight) {
+      const span = document.createElement('span');
+      span.className = 'highlight';
+      span.innerHTML = msg.content;
+      contentEl.appendChild(span);
+    } else {
+      contentEl.innerHTML = msg.content;
+    }
+    
+    div.appendChild(timeEl);
+    div.appendChild(nameEl);
+    div.appendChild(contentEl);
+    fragment.appendChild(div);
+  }
+  
+  stream.appendChild(fragment);
   stream.scrollTop = stream.scrollHeight;
+  
+  isScheduled = false;
 }
 
-var post_notif = function(msg){
-  stream.innerHTML += "<div class='line notif'><span class='highlight'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + msg +"</p></span></div>";
-  stream.scrollTop = stream.scrollHeight;
+var post_chat = function(name, msg) {
+  messageQueue.push({
+    time: getTime(),
+    content: msg,
+    className: 'line'
+  });
+  scheduleRender();
+}
+
+var post_info = function(msg) {
+  messageQueue.push({
+    time: getTime(),
+    content: msg,
+    className: 'line info'
+  });
+  scheduleRender();
+}
+
+var post_notif = function(msg) {
+  messageQueue.push({
+    time: getTime(),
+    content: msg,
+    className: 'line notif',
+    isHighlight: true
+  });
+  scheduleRender();
 }
 
 var getTime = function(){
@@ -118,7 +187,7 @@ socket.on('logout',function(){
   mapbox.style.display = 'none';
   menu.style.display = 'inline';
   if(!client.mobile){
-    globe.style.display = inline;
+    globebox.style.display = 'inline';
   }
 });
 
@@ -126,11 +195,280 @@ socket.on('notif', function(data){
   post_notif(data.msg);
 });
 
+// Research Modal Management
+var researchModal = null;
+var researchFindingsList = null;
+var modalClose = null;
+var currentFindings = [];
+
+// Initialize modal elements when DOM is ready
+function initResearchModal() {
+  researchModal = document.getElementById('researchModal');
+  researchFindingsList = document.getElementById('researchFindingsList');
+  modalClose = document.getElementById('modalClose');
+  
+  if (!researchModal || !researchFindingsList) {
+    console.warn('Research modal elements not found');
+    return;
+  }
+  
+  // Close modal on close button click
+  if (modalClose) {
+    modalClose.addEventListener('click', closeResearchModal);
+  }
+  
+  // Close modal on backdrop click
+  researchModal.addEventListener('click', function(e) {
+    if (e.target === researchModal) {
+      closeResearchModal();
+    }
+  });
+  
+  // Close modal on Escape key
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' && researchModal && researchModal.classList.contains('active')) {
+      closeResearchModal();
+    }
+  });
+}
+
+function openResearchModal() {
+  if (!researchModal) {
+    initResearchModal();
+  }
+  if (researchModal) {
+    researchModal.classList.add('active');
+  }
+}
+
+function closeResearchModal() {
+  if (researchModal) {
+    researchModal.classList.remove('active');
+  }
+}
+
+// Initialize modal when DOM is ready
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initResearchModal);
+} else {
+  initResearchModal();
+}
+
+function getTypeIcon(type) {
+  const icons = {
+    entity: '👤',
+    location: '📍',
+    organization: '🏢',
+    keyword: '📝',
+  };
+  return icons[type] || '📝';
+}
+
+function escapeHtml(text) {
+  const div = document.createElement('div');
+  div.textContent = text;
+  return div.innerHTML;
+}
+
+function renderFindings(findings) {
+  if (!researchFindingsList) {
+    initResearchModal();
+  }
+  if (!researchFindingsList) {
+    console.error('Cannot render findings: researchFindingsList not found');
+    return;
+  }
+  
+  currentFindings = findings || [];
+  researchFindingsList.innerHTML = '';
+  
+  if (!findings || findings.length === 0) {
+    researchFindingsList.innerHTML = '<div class="no-findings">No findings to review</div>';
+    return;
+  }
+  
+  findings.forEach(function(finding) {
+    const findingDiv = document.createElement('div');
+    findingDiv.className = 'finding-item';
+    findingDiv.setAttribute('data-review-id', finding.id);
+    
+    if (finding.status === 'approved') {
+      findingDiv.classList.add('approved');
+    } else if (finding.status === 'rejected') {
+      findingDiv.classList.add('rejected');
+    }
+    
+    const name = finding.name || finding.extractedData?.name || finding.extractedData?.address || 'unknown';
+    const sourceUrl = finding.sourceUrl || '#';
+    const typeIcon = getTypeIcon(finding.findingType || finding.type);
+    const confidence = finding.confidence || 0;
+    const contextSnippet = finding.contextSnippet || finding.context || '';
+    const status = finding.status || 'pending';
+    
+    let statusHtml = '';
+    let actionsHtml = '';
+    
+    if (status === 'pending') {
+      actionsHtml = `
+        <button class="finding-action-btn approve" data-action="approve" data-review-id="${finding.id}">Approve</button>
+        <button class="finding-action-btn reject" data-action="reject" data-review-id="${finding.id}">Reject</button>
+      `;
+      statusHtml = '<span class="finding-status">Pending</span>';
+    } else if (status === 'approved') {
+      statusHtml = '<span class="finding-status approved">✓ Approved</span>';
+    } else if (status === 'rejected') {
+      statusHtml = '<span class="finding-status rejected">✗ Rejected</span>';
+    }
+    
+    findingDiv.innerHTML = `
+      <div class="finding-header">
+        <span class="finding-type-icon">${typeIcon}</span>
+        <div class="finding-name">
+          <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(name)}</a>
+        </div>
+      </div>
+      <div class="finding-meta">
+        <span class="finding-confidence">Confidence: ${confidence}/10</span>
+        ${statusHtml}
+      </div>
+      ${contextSnippet ? `<div class="finding-context">${escapeHtml(contextSnippet)}</div>` : ''}
+      <div class="finding-source">
+        Source: <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceUrl)}</a>
+      </div>
+      ${actionsHtml ? `<div class="finding-actions">${actionsHtml}</div>` : ''}
+    `;
+    
+    researchFindingsList.appendChild(findingDiv);
+  });
+  
+  // Attach event listeners to approve/reject buttons
+  const actionButtons = researchFindingsList.querySelectorAll('.finding-action-btn');
+  actionButtons.forEach(function(btn) {
+    btn.addEventListener('click', function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      const action = btn.getAttribute('data-action');
+      const reviewId = btn.getAttribute('data-review-id');
+      
+      // Disable button immediately for better UX
+      btn.disabled = true;
+      
+      // Emit action event
+      socket.emit('action', { type: action, id: reviewId });
+    });
+  });
+}
+
+// Socket listener for review queue data
+socket.on('reviewQueue', function(data) {
+  if (data && data.findings) {
+    renderFindings(data.findings);
+    openResearchModal();
+  } else {
+    console.warn('Invalid reviewQueue data received:', data);
+  }
+});
+
+socket.on('reviewUpdated', function(data){
+  // Update the modal display for the specific review
+  if (!researchFindingsList) {
+    initResearchModal();
+  }
+  if (researchFindingsList) {
+    const findingDiv = researchFindingsList.querySelector(`[data-review-id="${data.reviewId}"]`);
+    if (findingDiv) {
+      // Update the finding item class
+      findingDiv.classList.remove('approved', 'rejected', 'pending');
+      findingDiv.classList.add(data.status);
+      
+      // Update the status display
+      const statusSpan = findingDiv.querySelector('.finding-status');
+      if (statusSpan) {
+        statusSpan.className = 'finding-status ' + data.status;
+        if (data.status === 'approved') {
+          statusSpan.textContent = '✓ Approved';
+        } else if (data.status === 'rejected') {
+          statusSpan.textContent = '✗ Rejected';
+        }
+      }
+      
+      // Remove action buttons
+      const actionsDiv = findingDiv.querySelector('.finding-actions');
+      if (actionsDiv) {
+        actionsDiv.remove();
+      }
+    }
+  }
+  
+  // Also update chat display if it exists (backward compatibility)
+  const reviewDiv = stream.querySelector(`[data-review-id="${data.reviewId}"]`);
+  if (reviewDiv) {
+    const p = reviewDiv.querySelector('p:last-child');
+    if (p) {
+      if (data.status === 'approved') {
+        p.innerHTML = p.innerHTML.replace(/<span[^>]*data-action="approve"[^>]*>approve<\/span> \/ <span[^>]*data-action="reject"[^>]*>reject<\/span>/, '<span style="color: #66bb6a;">✓ approved</span>');
+        const link = p.querySelector('a[target="_blank"]');
+        if (link) link.style.color = '#66bb6a';
+      } else if (data.status === 'rejected') {
+        p.innerHTML = p.innerHTML.replace(/<span[^>]*data-action="approve"[^>]*>approve<\/span> \/ <span[^>]*data-action="reject"[^>]*>reject<\/span>/, '<span style="color: #ef5350;">✗ rejected</span>');
+        const link = p.querySelector('a[target="_blank"]');
+        if (link) {
+          link.style.color = '#666';
+          link.style.textDecoration = 'line-through';
+        }
+      }
+    }
+  }
+});
+
 socket.on('chat', function(data){
+  const timeHTML = "<p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p>";
+  
   if(data.name){
     stream.innerHTML += "<div class='line'><p>" + getTime() + "</p><p class='name'>&nbsp;" + checkName(data.name) + ":&nbsp;</p><p>" + data.msg + "</p></div>";
   } else {
-    stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + data.msg + "</p></div>";
+    if(data.isHTML) {
+      // Render HTML directly and attach event handlers
+      const div = document.createElement('div');
+      div.className = 'line info';
+      
+      const timeP = document.createElement('p');
+      timeP.textContent = getTime();
+      
+      const nameP = document.createElement('p');
+      nameP.className = 'name';
+      nameP.textContent = ' client: ';
+      
+      const contentP = document.createElement('p');
+      contentP.innerHTML = ' ' + data.msg;
+      
+      div.appendChild(timeP);
+      div.appendChild(nameP);
+      div.appendChild(contentP);
+      
+      // Use event delegation on the parent div
+      div.addEventListener('click', function(e) {
+        const target = e.target;
+        if (target.hasAttribute('data-action')) {
+          e.preventDefault();
+          e.stopPropagation();
+          const action = target.getAttribute('data-action');
+          const reviewId = target.getAttribute('data-review-id');
+          console.log('Button clicked:', action, reviewId);
+          socket.emit('action', { type: action, id: reviewId });
+          return false;
+        }
+      });
+      
+      // Store reviewId on the div for updates
+      if (data.reviewId) {
+        div.setAttribute('data-review-id', data.reviewId);
+      }
+      
+      stream.appendChild(div);
+    } else {
+      stream.innerHTML += "<div class='line info'><p>" + getTime() + "</p><p class='name'>&nbsp;client:&nbsp;</p><p> " + data.msg + "</p></div>";
+    }
   }
   stream.scrollTop = stream.scrollHeight;
 });

@@ -30,84 +30,135 @@ async function smartGeocode(address) {
         'User-Agent': 'RealWorldOpera/1.0 (geospatial research tool)'
       }
     });
-    const osmData = await osmResponse.json();
     
-    logger.info('✅ OSM Nominatim response', { status: osmResponse.status, results: osmData.length });
+    // Check response status before parsing
+    if (!osmResponse.ok) {
+      const errorText = await osmResponse.text();
+      logger.warn('⚠️ OSM Nominatim API returned error status', { 
+        status: osmResponse.status, 
+        statusText: osmResponse.statusText,
+        body: errorText.substring(0, 200) 
+      });
+      
+      // If rate limited (429), wait a bit before fallback
+      if (osmResponse.status === 429) {
+        logger.warn('⏳ Rate limited by Nominatim, waiting 2 seconds...');
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+      // Fall through to Mapbox fallback
+    } else {
+      // Check if response has content
+      const responseText = await osmResponse.text();
+      if (!responseText || responseText.trim() === '') {
+        logger.warn('⚠️ OSM Nominatim API returned empty response');
+        // Fall through to Mapbox fallback
+      } else {
+        try {
+          const osmData = JSON.parse(responseText);
     
-    if (!osmData || osmData.length === 0) {
-      logger.warn('Geocoding found no results', { query: address });
-      return null;
+          logger.info('✅ OSM Nominatim response', { status: osmResponse.status, results: osmData.length });
+          
+          if (!osmData || osmData.length === 0) {
+            logger.warn('Geocoding found no results', { query: address });
+            // Fall through to Mapbox fallback
+          } else {
+            // Log all results for debugging
+            logger.info('Geocoding results', { 
+              query: address, 
+              count: osmData.length,
+              top3: osmData.slice(0, 3).map(r => ({
+                name: r.display_name,
+                type: r.type,
+                class: r.class,
+                importance: r.importance
+              }))
+            });
+            
+            // Prefer tourism/amenity POIs (landmarks, buildings) over generic places
+            // OSM types: tourism=*, amenity=*, building=*, place=*, highway=*
+            const poiResult = osmData.find(r => 
+              r.class === 'tourism' || 
+              r.class === 'amenity' ||
+              (r.class === 'building' && r.type !== 'yes') ||
+              r.type === 'attraction'
+            );
+            
+            // If no POI, prefer results with higher importance that aren't just roads
+            const bestResult = poiResult || osmData.filter(r => 
+              r.class !== 'highway' && r.class !== 'boundary'
+            ).sort((a, b) => 
+              parseFloat(b.importance || 0) - parseFloat(a.importance || 0)
+            )[0] || osmData[0];
+            
+            logger.info('🎯 Selected result', { 
+              name: bestResult.display_name,
+              type: bestResult.type,
+              class: bestResult.class,
+              isPOI: !!poiResult,
+              importance: bestResult.importance
+            });
+            
+            // Convert OSM format to node-geocoder format
+            const lat = parseFloat(bestResult.lat);
+            const lng = parseFloat(bestResult.lon);
+            const addr = bestResult.address || {};
+            
+            const result = {
+              latitude: lat,
+              longitude: lng,
+              formattedAddress: bestResult.display_name,
+              city: addr.city || addr.town || addr.village,
+              state: addr.state,
+              zipcode: addr.postcode,
+              country: addr.country,
+              district: addr.county,
+              neighbourhood: addr.neighbourhood || addr.suburb,
+              extra: {
+                bbox: bestResult.boundingbox,
+                osm_type: bestResult.osm_type,
+                osm_id: bestResult.osm_id,
+                class: bestResult.class,
+                type: bestResult.type,
+                importance: bestResult.importance
+              }
+            };
+            
+            logger.info('✨ Final geocode result', { 
+              address: result.formattedAddress,
+              coords: `${lat}, ${lng}`,
+              city: result.city,
+              type: `${bestResult.class}:${bestResult.type}`
+            });
+            
+            return result;
+          }
+        } catch (jsonError) {
+          logger.warn('⚠️ Failed to parse OSM response as JSON', { 
+            error: jsonError.message,
+            responsePreview: responseText.substring(0, 200)
+          });
+          // Fall through to Mapbox fallback
+        }
+      }
     }
     
-    // Log all results for debugging
-    logger.info('Geocoding results', { 
-      query: address, 
-      count: osmData.length,
-      top3: osmData.slice(0, 3).map(r => ({
-        name: r.display_name,
-        type: r.type,
-        class: r.class,
-        importance: r.importance
-      }))
-    });
-    
-    // Prefer tourism/amenity POIs (landmarks, buildings) over generic places
-    // OSM types: tourism=*, amenity=*, building=*, place=*, highway=*
-    const poiResult = osmData.find(r => 
-      r.class === 'tourism' || 
-      r.class === 'amenity' ||
-      (r.class === 'building' && r.type !== 'yes') ||
-      r.type === 'attraction'
-    );
-    
-    // If no POI, prefer results with higher importance that aren't just roads
-    const bestResult = poiResult || osmData.filter(r => 
-      r.class !== 'highway' && r.class !== 'boundary'
-    ).sort((a, b) => 
-      parseFloat(b.importance || 0) - parseFloat(a.importance || 0)
-    )[0] || osmData[0];
-    
-    logger.info('🎯 Selected result', { 
-      name: bestResult.display_name,
-      type: bestResult.type,
-      class: bestResult.class,
-      isPOI: !!poiResult,
-      importance: bestResult.importance
-    });
-    
-    // Convert OSM format to node-geocoder format
-    const lat = parseFloat(bestResult.lat);
-    const lng = parseFloat(bestResult.lon);
-    const addr = bestResult.address || {};
-    
-    const result = {
-      latitude: lat,
-      longitude: lng,
-      formattedAddress: bestResult.display_name,
-      city: addr.city || addr.town || addr.village,
-      state: addr.state,
-      zipcode: addr.postcode,
-      country: addr.country,
-      district: addr.county,
-      neighbourhood: addr.neighbourhood || addr.suburb,
-      extra: {
-        bbox: bestResult.boundingbox,
-        osm_type: bestResult.osm_type,
-        osm_id: bestResult.osm_id,
-        class: bestResult.class,
-        type: bestResult.type,
-        importance: bestResult.importance
+    // Fallback to Mapbox if OSM fails
+    logger.info('🔄 Falling back to Mapbox geocoder');
+    try {
+      const results = await geocoder.geocode(address);
+      if (results && results.length > 0) {
+        logger.info('✅ Mapbox geocoding successful', { 
+          address: results[0].formattedAddress,
+          coords: `${results[0].latitude}, ${results[0].longitude}`
+        });
+        return results[0];
       }
-    };
+    } catch (mapboxError) {
+      logger.error('❌ Mapbox geocoding also failed', { error: mapboxError.message });
+    }
     
-    logger.info('✨ Final geocode result', { 
-      address: result.formattedAddress,
-      coords: `${lat}, ${lng}`,
-      city: result.city,
-      type: `${bestResult.class}:${bestResult.type}`
-    });
-    
-    return result;
+    logger.warn('⚠️ All geocoding providers failed', { address });
+    return null;
     
   } catch (error) {
     logger.error('❌ Geocoding error', { error: error.message, stack: error.stack, address });

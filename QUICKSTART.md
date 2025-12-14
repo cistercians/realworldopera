@@ -6,6 +6,7 @@ Get Real World Opera running in 5 minutes!
 
 - Node.js 22.11.0+ installed
 - A Supabase account (free tier is fine)
+- A Mapbox account (free tier is fine)
 
 ## Step 1: Install Dependencies
 
@@ -13,7 +14,14 @@ Get Real World Opera running in 5 minutes!
 npm install
 ```
 
-## Step 2: Set Up Supabase
+## Step 2: Get Mapbox Token
+
+1. Go to [https://account.mapbox.com/access-tokens/](https://account.mapbox.com/access-tokens/)
+2. Sign in or create an account (free tier: 200,000 map views/month)
+3. Copy your **Default public token**
+4. You'll use this in Step 3
+
+## Step 3: Set Up Supabase
 
 ### Create Project
 1. Go to [https://app.supabase.com](https://app.supabase.com)
@@ -29,14 +37,16 @@ npm install
    - service_role key (keep this secret!)
 
 ### Update Environment Variables
-Edit `.env` file:
+Edit `.env` file and add your credentials:
 ```bash
+MAPBOX_ACCESS_TOKEN=pk.eyJ1Ijo...your_mapbox_token
 SUPABASE_URL=https://your-project.supabase.co
 SUPABASE_ANON_KEY=eyJhbGc...your_anon_key
 SUPABASE_SERVICE_KEY=eyJhbGc...your_service_key
+SESSION_SECRET=any_random_string_at_least_32_characters_long
 ```
 
-## Step 3: Create Database Schema
+## Step 4: Create Database Schema
 
 1. In Supabase dashboard, go to **SQL Editor**
 2. Click "New query"
@@ -44,7 +54,7 @@ SUPABASE_SERVICE_KEY=eyJhbGc...your_service_key
 4. Paste and click "Run"
 5. You should see success messages!
 
-## Step 4: Start the Server
+## Step 5: Start the Server
 
 ```bash
 npm start
@@ -56,14 +66,14 @@ Supabase: Client initialized
 Server is listening on port 3000
 ```
 
-## Step 5: Open the App
+## Step 6: Open the App
 
 Open your browser to:
 ```
 http://localhost:3000
 ```
 
-## Step 6: Create an Account
+## Step 7: Create an Account
 
 In the browser, you'll use Supabase Auth to create an account:
 
